@@ -21,7 +21,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -395,61 +394,6 @@ private fun HeroMedico(
 }
 
 @Composable
-private fun CabeceraVisual(
-    titulo: String,
-    subtitulo: String,
-    alto: androidx.compose.ui.unit.Dp,
-    imagenRes: Int = R.drawable.cappucare_login_hero,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.fillMaxWidth().height(alto),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            Image(
-                painter = painterResource(id = imagenRes),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.background.copy(alpha = .96f),
-                            MaterialTheme.colorScheme.background.copy(alpha = .76f),
-                            MaterialTheme.colorScheme.background.copy(alpha = .18f)
-                        )
-                    )
-                )
-            )
-            Column(
-                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(.82f).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Text(
-                    titulo,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    subtitulo,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = .88f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun MarcaCappucare() {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -518,8 +462,7 @@ fun LoginScreen(onLogin: (String) -> Unit) {
         ) {
             // Marca dentro del área segura: nunca queda debajo de la barra de estado.
             Row(
-                // Sube solo el encabezado de marca al área destacada, sin mover el resto de la pantalla.
-                modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp).offset(y = (-42).dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -676,11 +619,11 @@ fun InicioScreen(
                     Box(contentAlignment = Alignment.Center) { Text("♙", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge) }
                 }
             }
-            CabeceraVisual(
-                titulo = "Panel principal",
-                subtitulo = "Gestión de inventario médico",
-                alto = 190.dp
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Panel", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                Text("principal", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("Gestión de inventario médico", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 IndicadorCard("Productos", totalProductos.toString(), "en inventario", Modifier.weight(1f))
                 IndicadorCard("Movimientos", totalMovimientos.toString(), "registrados", Modifier.weight(1f))
@@ -751,7 +694,7 @@ fun ProductosScreen(
     val categorias = listOf("Todos", "Medicamentos", "Insumos", "Otro")
     val filtrados = productos.filter {
         (it.nombre.contains(busqueda, true) || it.codigo.contains(busqueda, true)) &&
-                (categoriaActiva == "Todos" || (categoriaActiva == "Medicamentos" && it.categoria.contains("med", true)) || (categoriaActiva == "Insumos" && it.categoria.contains("insum", true)) || (categoriaActiva == "Otro" && !it.categoria.contains("med", true) && !it.categoria.contains("insum", true)))
+            (categoriaActiva == "Todos" || (categoriaActiva == "Medicamentos" && it.categoria.contains("med", true)) || (categoriaActiva == "Insumos" && it.categoria.contains("insum", true)) || (categoriaActiva == "Otro" && !it.categoria.contains("med", true) && !it.categoria.contains("insum", true)))
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -759,13 +702,10 @@ fun ProductosScreen(
         bottomBar = { NavegacionCappucare("Productos", onInicio, {}, onMovimientos, onPerfil) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 10.dp)) {
-            CabeceraVisual(
-                titulo = "Productos y stock",
-                subtitulo = "Administra los productos del inventario",
-                alto = 150.dp,
-                imagenRes = R.drawable.cappucare_medicamentos,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(bottom = 14.dp)) {
+                Text("Productos y stock", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                Text("Administra los productos del inventario", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             CampoCappucare(busqueda, { busqueda = it }, "⌕  Buscar productos...", singleLine = true)
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -794,29 +734,14 @@ fun ProductosScreen(
     }
 }
 
-private fun productoImagen(nombre: String, categoria: String): Int {
-    val texto = "$nombre $categoria".lowercase()
-    return when {
-        "guante" in texto -> R.drawable.cappucare_guantes
-        "mascarilla" in texto || "mascara" in texto -> R.drawable.cappucare_mascarillas
-        "jeringa" in texto -> R.drawable.cappucare_jeringas
-        "med" in texto || "paracetamol" in texto || "tableta" in texto || "comprimido" in texto -> R.drawable.cappucare_medicamentos
-        "insumo" in texto -> R.drawable.cappucare_jeringas
-        else -> R.drawable.cappucare_medicamentos
-    }
-}
-
 @Composable
 fun ProductoCard(producto: Producto) {
     val bajo = producto.cantidad <= producto.nivelMinimo
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Image(
-                painter = painterResource(id = productoImagen(producto.nombre, producto.categoria)),
-                contentDescription = producto.nombre,
-                modifier = Modifier.size(76.dp).clip(RoundedCornerShape(14.dp)),
-                contentScale = ContentScale.Crop
-            )
+            Box(Modifier.size(68.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                Text(if (producto.categoria.contains("med", true)) "✚" else "▦", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(producto.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Cód: ${producto.codigo}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -846,7 +771,7 @@ fun MovimientosScreen(
     var tipoActivo by remember { mutableStateOf("Todos") }
     val filtrados = movimientos.filter {
         it.codigoProducto.contains(filtroProducto, true) &&
-                (tipoActivo == "Todos" || (tipoActivo == "Ingresos" && it.tipo.contains("ingreso", true)) || (tipoActivo == "Salidas" && it.tipo.contains("salida", true)))
+            (tipoActivo == "Todos" || (tipoActivo == "Ingresos" && it.tipo.contains("ingreso", true)) || (tipoActivo == "Salidas" && it.tipo.contains("salida", true)))
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -854,13 +779,9 @@ fun MovimientosScreen(
         bottomBar = { NavegacionCappucare("Movimientos", onInicio, onProductos, {}, onPerfil) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 10.dp)) {
-            CabeceraVisual(
-                titulo = "Movimientos",
-                subtitulo = "Historial de ingresos y salidas de stock",
-                alto = 145.dp,
-                imagenRes = R.drawable.cappucare_jeringas,
-                modifier = Modifier.padding(bottom = 10.dp)
-            )
+            Text("Movimientos", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Text("Historial de ingresos y salidas de stock", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onRegistrarIngreso, modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(13.dp)) { Text("＋ Ingreso") }
                 OutlinedButton(onClick = onRegistrarSalida, modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(13.dp)) { Text("− Salida") }
@@ -926,11 +847,12 @@ fun RegistrarIngresoScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = { BarraSuperior("Registrar ingreso", onVolver) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CabeceraVisual(
-                titulo = "Registrar ingreso",
-                subtitulo = "Agrega stock al inventario",
-                alto = 138.dp,
-                imagenRes = R.drawable.cappucare_medicamentos
+            Text("Registrar ingreso", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Text("Agrega stock al inventario", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            HeroMedico(
+                titulo = "Ingreso de insumos",
+                descripcion = "Actualiza el inventario con nuevas unidades.",
+                simbolo = "＋", compacto = true
             )
             EncabezadoFormulario("Entrada de productos", "Registra las unidades que se incorporan al inventario.", "＋")
             CampoCappucare(codigo, { codigo = it; mensajeValidacion = "" }, "Código del producto", singleLine = true)
@@ -972,11 +894,12 @@ fun RegistrarSalidaScreen(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = { BarraSuperior("Registrar salida", onVolver) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CabeceraVisual(
-                titulo = "Registrar salida",
-                subtitulo = "Reduce el stock disponible",
-                alto = 138.dp,
-                imagenRes = R.drawable.cappucare_jeringas
+            Text("Registrar salida", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Text("Reduce el stock disponible", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            HeroMedico(
+                titulo = "Salida de insumos",
+                descripcion = "Registra cada retiro con su motivo.",
+                simbolo = "−", compacto = true
             )
             EncabezadoFormulario("Salida de productos", "Registra una venta, consumo o retiro de stock.", "−")
             CampoCappucare(codigo, { codigo = it; mensajeValidacion = "" }, "Código del producto", singleLine = true)
@@ -1009,7 +932,7 @@ fun RegistrarSalidaScreen(
 @Composable
 private fun BarraSuperior(titulo: String, onVolver: () -> Unit) {
     TopAppBar(
-        title = { MarcaCappucare() },
+        title = { Text(titulo, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
         navigationIcon = {
             androidx.compose.material3.TextButton(onClick = onVolver) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
         },
