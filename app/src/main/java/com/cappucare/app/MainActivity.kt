@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,6 +60,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -178,6 +181,20 @@ fun CappucareApp(viewModel: InventarioViewModel) {
         }
     }
 
+    LaunchedEffect(mensaje) {
+        when (mensaje) {
+            "Ingreso registrado correctamente" -> {
+                Toast.makeText(context, "Ingreso registrado correctamente", Toast.LENGTH_LONG).show()
+                codigoIngresoInicial = ""
+                pantalla = Screen.Inicio
+            }
+            "Salida registrada correctamente" -> {
+                Toast.makeText(context, "Salida registrada correctamente", Toast.LENGTH_LONG).show()
+                pantalla = Screen.Inicio
+            }
+        }
+    }
+
     when (pantalla) {
         Screen.Login -> LoginScreen { usuario ->
             usuarioActivo = usuario
@@ -242,6 +259,7 @@ fun CappucareApp(viewModel: InventarioViewModel) {
             }
         )
         Screen.RegistrarIngreso -> RegistrarIngresoScreen(
+            productos = productos,
             mensaje = mensaje,
             responsableActivo = usuarioActivo,
             codigoInicial = codigoIngresoInicial,
@@ -255,6 +273,7 @@ fun CappucareApp(viewModel: InventarioViewModel) {
             }
         )
         Screen.RegistrarSalida -> RegistrarSalidaScreen(
+            productos = productos,
             mensaje = mensaje,
             responsableActivo = usuarioActivo,
             onVolver = {
@@ -1043,6 +1062,7 @@ fun MovimientoCard(movimiento: Movimiento) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegistrarIngresoScreen(
+    productos: List<Producto>,
     mensaje: String?,
     responsableActivo: String,
     codigoInicial: String = "",
@@ -1053,6 +1073,16 @@ fun RegistrarIngresoScreen(
     var cantidad by remember { mutableStateOf("") }
     var responsable by remember(responsableActivo) { mutableStateOf(responsableActivo) }
     var mensajeValidacion by remember { mutableStateOf("") }
+    var procesando by remember { mutableStateOf(false) }
+    var menuAbierto by remember { mutableStateOf(false) }
+    val seleccionado = productos.firstOrNull { it.codigo.equals(codigo, ignoreCase = true) }
+    val filtrados = productos.filter {
+        it.nombre.contains(codigo, ignoreCase = true) || it.codigo.contains(codigo, ignoreCase = true)
+    }.take(8)
+
+    LaunchedEffect(mensaje) {
+        if (!mensaje.isNullOrBlank()) procesando = false
+    }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = { BarraSuperior("Registrar ingreso", onVolver) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1062,26 +1092,59 @@ fun RegistrarIngresoScreen(
                 alto = 138.dp,
                 imagenRes = R.drawable.cappucare_medicamentos
             )
-            EncabezadoFormulario("Entrada de productos", "Registra las unidades que se incorporan al inventario.", "＋")
-            CampoCappucare(codigo, { codigo = it; mensajeValidacion = "" }, "Código del producto", singleLine = true)
-            CampoCappucare(cantidad, { cantidad = it; mensajeValidacion = "" }, "Cantidad", singleLine = true, keyboardType = KeyboardType.Number)
+            EncabezadoFormulario("Entrada de productos", "Busca por nombre o código y selecciona el insumo.", "＋")
+            Box {
+                CampoCappucare(codigo, {
+                    codigo = it
+                    mensajeValidacion = ""
+                    menuAbierto = it.isNotBlank()
+                }, "Buscar insumo por nombre o código", singleLine = true)
+                DropdownMenu(
+                    expanded = menuAbierto && filtrados.isNotEmpty(),
+                    onDismissRequest = { menuAbierto = false },
+                    modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 260.dp)
+                ) {
+                    filtrados.forEach { producto ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(producto.nombre, fontWeight = FontWeight.SemiBold)
+                                    Text("${producto.codigo} · Stock: ${producto.cantidad} ${producto.unidad}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            },
+                            onClick = {
+                                codigo = producto.codigo
+                                menuAbierto = false
+                                mensajeValidacion = ""
+                            }
+                        )
+                    }
+                }
+            }
+            if (seleccionado != null) {
+                Text("Stock actual: ${seleccionado.cantidad} ${seleccionado.unidad}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            } else if (codigo.isNotBlank()) {
+                Text("Selecciona un insumo de la lista para confirmar el código.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            CampoCappucare(cantidad, { cantidad = it.filter(Char::isDigit); mensajeValidacion = "" }, "Cantidad a ingresar", singleLine = true, keyboardType = KeyboardType.Number)
             CampoCappucare(responsable, {}, "Responsable (usuario activo)", readOnly = true, singleLine = true)
             MensajeFormulario(mensajeValidacion, mensaje)
             Spacer(Modifier.height(4.dp))
             Button(
+                enabled = !procesando,
                 onClick = {
                     val numero = cantidad.toIntOrNull()
                     when {
-                        codigo.isBlank() -> mensajeValidacion = "Debe ingresar el código del producto."
+                        seleccionado == null -> mensajeValidacion = "Selecciona un insumo válido de la lista."
                         numero == null -> mensajeValidacion = "Debe ingresar una cantidad válida."
                         numero <= 0 -> mensajeValidacion = "La cantidad debe ser mayor que 0."
-                        responsable.isBlank() -> mensajeValidacion = "Debe ingresar el responsable."
-                        else -> { mensajeValidacion = ""; onGuardar(codigo.trim(), numero, responsable.trim()) }
+                        responsable.isBlank() -> mensajeValidacion = "No se pudo identificar al responsable."
+                        else -> { mensajeValidacion = ""; procesando = true; onGuardar(seleccionado.codigo, numero, responsable.trim()) }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp)
-            ) { Text("Guardar ingreso", fontWeight = FontWeight.SemiBold) }
-            OutlinedButton(onClick = onVolver, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp)) { Text("Cancelar y volver") }
+            ) { Text(if (procesando) "Guardando…" else "Guardar ingreso", fontWeight = FontWeight.SemiBold) }
+            OutlinedButton(onClick = onVolver, enabled = !procesando, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp)) { Text("Cancelar y volver") }
         }
     }
 }
@@ -1089,6 +1152,7 @@ fun RegistrarIngresoScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegistrarSalidaScreen(
+    productos: List<Producto>,
     mensaje: String?,
     responsableActivo: String,
     onVolver: () -> Unit,
@@ -1099,6 +1163,16 @@ fun RegistrarSalidaScreen(
     var motivo by remember { mutableStateOf("") }
     var responsable by remember(responsableActivo) { mutableStateOf(responsableActivo) }
     var mensajeValidacion by remember { mutableStateOf("") }
+    var procesando by remember { mutableStateOf(false) }
+    var menuAbierto by remember { mutableStateOf(false) }
+    val seleccionado = productos.firstOrNull { it.codigo.equals(codigo, ignoreCase = true) }
+    val filtrados = productos.filter {
+        it.nombre.contains(codigo, ignoreCase = true) || it.codigo.contains(codigo, ignoreCase = true)
+    }.take(8)
+
+    LaunchedEffect(mensaje) {
+        if (!mensaje.isNullOrBlank()) procesando = false
+    }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = { BarraSuperior("Registrar salida", onVolver) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1108,29 +1182,63 @@ fun RegistrarSalidaScreen(
                 alto = 138.dp,
                 imagenRes = R.drawable.cappucare_jeringas
             )
-            EncabezadoFormulario("Salida de productos", "Registra una venta, consumo o retiro de stock.", "−")
-            CampoCappucare(codigo, { codigo = it; mensajeValidacion = "" }, "Código del producto", singleLine = true)
-            CampoCappucare(cantidad, { cantidad = it; mensajeValidacion = "" }, "Cantidad", singleLine = true, keyboardType = KeyboardType.Number)
+            EncabezadoFormulario("Salida de productos", "Busca por nombre o código y revisa el stock antes de retirar.", "−")
+            Box {
+                CampoCappucare(codigo, {
+                    codigo = it
+                    mensajeValidacion = ""
+                    menuAbierto = it.isNotBlank()
+                }, "Buscar insumo por nombre o código", singleLine = true)
+                DropdownMenu(
+                    expanded = menuAbierto && filtrados.isNotEmpty(),
+                    onDismissRequest = { menuAbierto = false },
+                    modifier = Modifier.fillMaxWidth(0.9f).heightIn(max = 260.dp)
+                ) {
+                    filtrados.forEach { producto ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(producto.nombre, fontWeight = FontWeight.SemiBold)
+                                    Text("${producto.codigo} · Stock: ${producto.cantidad} ${producto.unidad}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            },
+                            onClick = {
+                                codigo = producto.codigo
+                                menuAbierto = false
+                                mensajeValidacion = ""
+                            }
+                        )
+                    }
+                }
+            }
+            if (seleccionado != null) {
+                Text("Stock disponible: ${seleccionado.cantidad} ${seleccionado.unidad}", color = if (seleccionado.cantidad > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            } else if (codigo.isNotBlank()) {
+                Text("Selecciona un insumo de la lista para confirmar el código.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            CampoCappucare(cantidad, { cantidad = it.filter(Char::isDigit); mensajeValidacion = "" }, "Cantidad a retirar", singleLine = true, keyboardType = KeyboardType.Number)
             CampoCappucare(motivo, { motivo = it; mensajeValidacion = "" }, "Motivo de la salida", singleLine = true)
             CampoCappucare(responsable, {}, "Responsable (usuario activo)", readOnly = true, singleLine = true)
             MensajeFormulario(mensajeValidacion, mensaje)
             Spacer(Modifier.height(4.dp))
             Button(
+                enabled = !procesando,
                 onClick = {
                     val numero = cantidad.toIntOrNull()
                     when {
-                        codigo.isBlank() -> mensajeValidacion = "Debe ingresar el código del producto."
+                        seleccionado == null -> mensajeValidacion = "Selecciona un insumo válido de la lista."
                         numero == null -> mensajeValidacion = "Debe ingresar una cantidad válida."
                         numero <= 0 -> mensajeValidacion = "La cantidad debe ser mayor que 0."
+                        numero > seleccionado.cantidad -> mensajeValidacion = "Stock insuficiente. Disponible: ${seleccionado.cantidad}."
                         motivo.isBlank() -> mensajeValidacion = "Debe ingresar el motivo de la salida."
-                        responsable.isBlank() -> mensajeValidacion = "Debe ingresar el responsable."
-                        else -> { mensajeValidacion = ""; onGuardar(codigo.trim(), numero, motivo.trim(), responsable.trim()) }
+                        responsable.isBlank() -> mensajeValidacion = "No se pudo identificar al responsable."
+                        else -> { mensajeValidacion = ""; procesando = true; onGuardar(seleccionado.codigo, numero, motivo.trim(), responsable.trim()) }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-            ) { Text("Guardar salida", fontWeight = FontWeight.SemiBold) }
-            OutlinedButton(onClick = onVolver, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp)) { Text("Cancelar y volver") }
+            ) { Text(if (procesando) "Guardando…" else "Guardar salida", fontWeight = FontWeight.SemiBold) }
+            OutlinedButton(onClick = onVolver, enabled = !procesando, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp)) { Text("Cancelar y volver") }
         }
     }
 }
