@@ -18,9 +18,27 @@ import kotlinx.coroutines.launch
 class InventarioViewModel(application: Application) :
     AndroidViewModel(application) {
 
-    private val repository = InventarioRepository(
-        CappucareDatabase.obtener(application).inventarioDao()
-    )
+    private val database = CappucareDatabase.obtener(application)
+    private val dao = database.inventarioDao()
+
+    private val repository = InventarioRepository(dao)
+
+    init {
+        viewModelScope.launch {
+            dao.insertarProducto(
+                Producto(
+                    codigo = "JER001",
+                    nombre = "Jeringas",
+                    categoria = "Insumos",
+                    cantidad = 100,
+                    unidad = "Unidades",
+                    nivelMinimo = 20,
+                    ubicacion = "Bodega de insumos",
+                    estado = "Disponible"
+                )
+            )
+        }
+    }
 
     val productos: StateFlow<List<Producto>> =
         repository.productos.stateIn(
@@ -69,7 +87,8 @@ class InventarioViewModel(application: Application) :
     ) {
         viewModelScope.launch {
             _mensaje.value =
-                if (repository.registrarSalida(
+                if (
+                    repository.registrarSalida(
                         codigo,
                         cantidad,
                         motivo,
@@ -87,4 +106,3 @@ class InventarioViewModel(application: Application) :
         _mensaje.value = null
     }
 }
-
