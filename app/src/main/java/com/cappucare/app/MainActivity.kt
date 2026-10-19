@@ -527,7 +527,7 @@ fun LoginScreen(onLogin: (String) -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .imePadding()
                 .padding(horizontal = 20.dp)
-                .padding(top = 63.dp, bottom = 18.dp),
+                .padding(top = 8.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.Top
         ) {
             // Marca dentro del área segura: nunca queda debajo de la barra de estado.
@@ -549,7 +549,7 @@ fun LoginScreen(onLogin: (String) -> Unit) {
             }
 
             // Desplaza hacia abajo el bloque principal desde el título, sin mover el logo.
-            Spacer(Modifier.height(72.dp))
+            Spacer(Modifier.height(127.dp))
             Text("Control de", color = texto, fontSize = 30.sp, lineHeight = 35.sp, fontWeight = FontWeight.ExtraBold)
             Text("inventario médico", color = verde, fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(8.dp))
@@ -1224,4 +1224,5 @@ private fun EstadoVacio(titulo: String, descripcion: String) {
         }
     }
 }
+
 
