@@ -9,7 +9,7 @@ Aplicación Android académica para controlar el inventario ficticio de insumos 
 
 ## Repositorio GitHub
 
-https://github.com/IgnaArntz/Prueba-2--Repositorio-Cappucare-Stock
+https://github.com/IgnaArntz/CappucareStock
 
 ## Tecnologías utilizadas
 
@@ -95,7 +95,7 @@ La aplicación incorpora el uso del sistema de notificaciones de Android para in
 
 Se contempla la creación del canal de notificaciones `Alertas de inventario` y la solicitud del permiso de notificaciones en Android 13 o superior.
 
-Para confirmar el funcionamiento de este recurso, se debe probar la aplicación en un dispositivo o emulador y comprobar que el permiso esté concedido y que la notificación se genere en las condiciones previstas.
+El funcionamiento de las notificaciones fue comprobado en un dispositivo Android durante las pruebas del proyecto. En Android 13 o superior, el permiso de notificaciones debe estar concedido para que el sistema pueda mostrarlas.
 
 ## Pruebas funcionales recomendadas
 
@@ -120,6 +120,7 @@ Antes de entregar el proyecto, se recomienda comprobar los siguientes casos:
 - Comprobar que el proyecto compila y se ejecuta sin errores.
 - Verificar el funcionamiento de las notificaciones y del mecanismo de importación de la base de datos, si forman parte de los requisitos evaluados.
 - Preparar el archivo ZIP con el código fuente y los archivos de configuración necesarios para abrir el proyecto en Android Studio.
+- Excluir las carpetas generadas `build/` y `.gradle/` del ZIP de entrega.
 
 ## Uso académico
 
