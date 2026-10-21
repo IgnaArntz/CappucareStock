@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -190,6 +191,44 @@ fun CappucareApp(viewModel: InventarioViewModel) {
             }
             "Salida registrada correctamente" -> {
                 Toast.makeText(context, "Salida registrada correctamente", Toast.LENGTH_LONG).show()
+                pantalla = Screen.Inicio
+            }
+        }
+    }
+
+    // Intercepta el botón Atrás del sistema para navegar según la pantalla actual.
+    // En Inicio, mantiene la aplicación abierta en el panel principal.
+    BackHandler(enabled = pantalla != Screen.Login) {
+        when (pantalla) {
+            Screen.Login -> Unit
+            Screen.Inicio -> Unit
+            Screen.StockBajo -> {
+                viewModel.limpiarMensaje()
+                pantalla = Screen.Inicio
+            }
+            Screen.Productos -> {
+                viewModel.limpiarMensaje()
+                pantalla = Screen.Inicio
+            }
+            Screen.Movimientos -> {
+                viewModel.limpiarMensaje()
+                pantalla = Screen.Inicio
+            }
+            Screen.RegistrarIngreso -> {
+                viewModel.limpiarMensaje()
+                pantalla = if (codigoIngresoInicial.isNotBlank()) {
+                    Screen.StockBajo
+                } else {
+                    Screen.Movimientos
+                }
+                codigoIngresoInicial = ""
+            }
+            Screen.RegistrarSalida -> {
+                viewModel.limpiarMensaje()
+                pantalla = Screen.Movimientos
+            }
+            Screen.Perfil -> {
+                viewModel.limpiarMensaje()
                 pantalla = Screen.Inicio
             }
         }
