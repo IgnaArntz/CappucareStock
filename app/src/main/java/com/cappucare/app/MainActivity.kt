@@ -152,6 +152,8 @@ private sealed class Screen {
     object Inicio : Screen()
     object StockBajo : Screen()
     object Productos : Screen()
+    object ProductoDetalle : Screen()
+    object RegistrarProducto : Screen()
     object Movimientos : Screen()
     object RegistrarIngreso : Screen()
     object RegistrarSalida : Screen()
@@ -163,6 +165,7 @@ fun CappucareApp(viewModel: InventarioViewModel) {
     var pantalla by remember { mutableStateOf<Screen>(Screen.Login) }
     var usuarioActivo by remember { mutableStateOf("") }
     var codigoIngresoInicial by remember { mutableStateOf("") }
+    var productoSeleccionado by remember { mutableStateOf<Producto?>(null) }
     val productos by viewModel.productos.collectAsStateWithLifecycle()
     val movimientos by viewModel.movimientos.collectAsStateWithLifecycle()
     val mensaje by viewModel.mensaje.collectAsStateWithLifecycle()
@@ -193,6 +196,10 @@ fun CappucareApp(viewModel: InventarioViewModel) {
                 Toast.makeText(context, "Salida registrada correctamente", Toast.LENGTH_LONG).show()
                 pantalla = Screen.Inicio
             }
+            "Producto registrado correctamente" -> {
+                Toast.makeText(context, "Producto registrado correctamente", Toast.LENGTH_LONG).show()
+                pantalla = Screen.Productos
+            }
         }
     }
 
@@ -209,6 +216,13 @@ fun CappucareApp(viewModel: InventarioViewModel) {
             Screen.Productos -> {
                 viewModel.limpiarMensaje()
                 pantalla = Screen.Inicio
+            }
+            Screen.ProductoDetalle -> {
+                pantalla = Screen.Productos
+            }
+            Screen.RegistrarProducto -> {
+                viewModel.limpiarMensaje()
+                pantalla = Screen.Productos
             }
             Screen.Movimientos -> {
                 viewModel.limpiarMensaje()
@@ -268,7 +282,17 @@ fun CappucareApp(viewModel: InventarioViewModel) {
             onVolver = { pantalla = Screen.Inicio },
             onInicio = { pantalla = Screen.Inicio },
             onMovimientos = { pantalla = Screen.Movimientos },
-            onPerfil = { pantalla = Screen.Perfil }
+            onPerfil = { pantalla = Screen.Perfil },
+            onAgregarProducto = { viewModel.limpiarMensaje(); pantalla = Screen.RegistrarProducto },
+            onSeleccionarProducto = { producto -> productoSeleccionado = producto; pantalla = Screen.ProductoDetalle }
+        )
+        Screen.ProductoDetalle -> productoSeleccionado?.let { producto ->
+            ProductoDetalleScreen(producto = producto, onVolver = { pantalla = Screen.Productos })
+        } ?: run { pantalla = Screen.Productos }
+        Screen.RegistrarProducto -> RegistrarProductoScreen(
+            mensaje = mensaje,
+            onVolver = { viewModel.limpiarMensaje(); pantalla = Screen.Productos },
+            onGuardar = { producto -> viewModel.crearProducto(producto) }
         )
         Screen.Perfil -> PerfilScreen(
             correo = usuarioActivo,
@@ -307,8 +331,8 @@ fun CappucareApp(viewModel: InventarioViewModel) {
                 pantalla = if (codigoIngresoInicial.isNotBlank()) Screen.StockBajo else Screen.Movimientos
                 codigoIngresoInicial = ""
             },
-            onGuardar = { codigo, cantidad, _ ->
-                viewModel.registrarIngreso(codigo, cantidad, usuarioActivo)
+            onGuardar = { codigo, cantidad, ubicacion, _ ->
+                viewModel.registrarIngreso(codigo, cantidad, usuarioActivo, ubicacion)
             }
         )
         Screen.RegistrarSalida -> RegistrarSalidaScreen(
@@ -319,8 +343,8 @@ fun CappucareApp(viewModel: InventarioViewModel) {
                 viewModel.limpiarMensaje()
                 pantalla = Screen.Movimientos
             },
-            onGuardar = { codigo, cantidad, motivo, _ ->
-                viewModel.registrarSalida(codigo, cantidad, motivo, usuarioActivo)
+            onGuardar = { codigo, cantidad, motivo, ubicacion, _ ->
+                viewModel.registrarSalida(codigo, cantidad, motivo, usuarioActivo, ubicacion)
             }
         )
     }
@@ -931,7 +955,9 @@ fun ProductosScreen(
     onVolver: () -> Unit,
     onInicio: () -> Unit,
     onMovimientos: () -> Unit,
-    onPerfil: () -> Unit
+    onPerfil: () -> Unit,
+    onAgregarProducto: () -> Unit,
+    onSeleccionarProducto: (Producto) -> Unit
 ) {
     var busqueda by remember { mutableStateOf("") }
     var categoriaActiva by remember { mutableStateOf("Todos") }
@@ -954,6 +980,10 @@ fun ProductosScreen(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             CampoCappucare(busqueda, { busqueda = it }, "⌕  Buscar productos...", singleLine = true)
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onAgregarProducto, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                Text("+ Agregar producto o insumo")
+            }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 categorias.forEach { categoria ->
@@ -974,9 +1004,115 @@ fun ProductosScreen(
                 EstadoVacio("No hay productos para mostrar", "Prueba con otro nombre o código, o cambia la categoría.")
             } else {
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(filtrados, key = { it.codigo }) { producto -> ProductoCard(producto) }
+                    items(filtrados, key = { it.codigo }) { producto -> ProductoCard(producto, onClick = { onSeleccionarProducto(producto) }) }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RegistrarProductoScreen(
+    mensaje: String?,
+    onVolver: () -> Unit,
+    onGuardar: (Producto) -> Unit
+) {
+    var codigo by remember { mutableStateOf("") }
+    var nombre by remember { mutableStateOf("") }
+    var descripcion by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("Insumos médicos") }
+    var unidad by remember { mutableStateOf("Unidades") }
+    var nivelMinimo by remember { mutableStateOf("10") }
+    var ubicacion by remember { mutableStateOf("Bodega de almacenamiento") }
+    var categoriaExpandida by remember { mutableStateOf(false) }
+    var unidadExpandida by remember { mutableStateOf(false) }
+    var ubicacionExpandida by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val categorias = listOf("Medicamentos", "Insumos médicos", "Protección personal", "Material clínico", "Otros")
+    val unidades = listOf("Unidades", "Cajas", "Paquetes", "Frascos", "Pares")
+    val ubicaciones = listOf("Bodega de almacenamiento", "Devoluciones")
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { BarraSuperior("Agregar producto", onVolver) }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Datos del producto o insumo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Completa todos los campos. El stock inicial será 0 y luego podrás registrar ingresos.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            CampoCappucare(codigo, { codigo = it; error = null }, "Código único", singleLine = true)
+            CampoCappucare(nombre, { nombre = it; error = null }, "Nombre del producto", singleLine = true)
+            CampoCappucare(descripcion, { descripcion = it; error = null }, "Descripción: ¿qué producto es?")
+            Box {
+                OutlinedButton(onClick = { categoriaExpandida = true }, modifier = Modifier.fillMaxWidth()) { Text("Categoría: $categoria", modifier = Modifier.weight(1f), textAlign = TextAlign.Start); Text("⌄") }
+                DropdownMenu(expanded = categoriaExpandida, onDismissRequest = { categoriaExpandida = false }) { categorias.forEach { opcion -> DropdownMenuItem(text = { Text(opcion) }, onClick = { categoria = opcion; categoriaExpandida = false }) } }
+            }
+            Box {
+                OutlinedButton(onClick = { unidadExpandida = true }, modifier = Modifier.fillMaxWidth()) { Text("Unidad de medida: $unidad", modifier = Modifier.weight(1f), textAlign = TextAlign.Start); Text("⌄") }
+                DropdownMenu(expanded = unidadExpandida, onDismissRequest = { unidadExpandida = false }) { unidades.forEach { opcion -> DropdownMenuItem(text = { Text(opcion) }, onClick = { unidad = opcion; unidadExpandida = false }) } }
+            }
+            CampoCappucare(nivelMinimo, { nivelMinimo = it.filter(Char::isDigit); error = null }, "Nivel mínimo de existencias", singleLine = true, keyboardType = KeyboardType.Number)
+            Box {
+                OutlinedButton(onClick = { ubicacionExpandida = true }, modifier = Modifier.fillMaxWidth()) { Text("Almacenamiento: $ubicacion", modifier = Modifier.weight(1f), textAlign = TextAlign.Start); Text("⌄") }
+                DropdownMenu(expanded = ubicacionExpandida, onDismissRequest = { ubicacionExpandida = false }) { ubicaciones.forEach { opcion -> DropdownMenuItem(text = { Text(opcion) }, onClick = { ubicacion = opcion; ubicacionExpandida = false }) } }
+            }
+            if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (!mensaje.isNullOrBlank() && mensaje != "Producto registrado correctamente") Text(mensaje, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Button(onClick = {
+                val minimo = nivelMinimo.toIntOrNull()
+                if (codigo.isBlank() || nombre.isBlank() || descripcion.isBlank() || minimo == null || minimo < 0) {
+                    error = "Completa código, nombre, descripción y un nivel mínimo válido."
+                } else {
+                    error = null
+                    onGuardar(Producto(codigo = codigo.trim(), nombre = nombre.trim(), descripcion = descripcion.trim(), categoria = categoria, cantidad = 0, unidad = unidad, nivelMinimo = minimo, ubicacion = ubicacion, estado = "Disponible"))
+                }
+            }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp)) { Text("Guardar producto") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProductoDetalleScreen(producto: Producto, onVolver: () -> Unit) {
+    val bajo = producto.cantidad <= producto.nivelMinimo
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { BarraSuperior("Detalle del producto", onVolver) }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Image(painter = painterResource(id = productoImagen(producto.nombre, producto.categoria)), contentDescription = producto.nombre, modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(15.dp)), contentScale = ContentScale.Crop)
+                    Text(producto.nombre, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Código: ${producto.codigo}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    EtiquetaEstado(if (bajo) "Stock bajo" else "Stock normal", bajo)
+                }
+            }
+            Text("Información del producto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            DetalleDato("Descripción", producto.descripcion.ifBlank { "Sin descripción registrada" })
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { DetalleDato("Categoría", producto.categoria) }
+                Box(Modifier.weight(1f)) { DetalleDato("Unidad de medida", producto.unidad) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { DetalleDato("Almacenamiento", producto.ubicacion) }
+                Box(Modifier.weight(1f)) { DetalleDato("Estado", producto.estado) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { DetalleDato("Stock actual", "${producto.cantidad} ${producto.unidad.lowercase()}", destacar = true) }
+                Box(Modifier.weight(1f)) { DetalleDato("Nivel mínimo", "${producto.nivelMinimo} ${producto.unidad.lowercase()}") }
+            }
+            Text("Pulsa Atrás para volver al listado de productos.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun DetalleDato(etiqueta: String, valor: String, destacar: Boolean = false) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(etiqueta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(valor, style = if (destacar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (destacar) FontWeight.Bold else FontWeight.Medium, color = if (destacar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -994,9 +1130,9 @@ private fun productoImagen(nombre: String, categoria: String): Int {
 }
 
 @Composable
-fun ProductoCard(producto: Producto) {
+fun ProductoCard(producto: Producto, onClick: () -> Unit = {}) {
     val bajo = producto.cantidad <= producto.nivelMinimo
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(17.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Image(
                 painter = painterResource(id = productoImagen(producto.nombre, producto.categoria)),
@@ -1007,7 +1143,15 @@ fun ProductoCard(producto: Producto) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(producto.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Cód: ${producto.codigo}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                Text(producto.categoria, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(producto.categoria, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    producto.descripcion.ifBlank { "Producto o insumo para uso clínico: ${producto.nombre}." },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text("Almacenamiento: ${producto.ubicacion}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Stock", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -1106,7 +1250,7 @@ fun RegistrarIngresoScreen(
     responsableActivo: String,
     codigoInicial: String = "",
     onVolver: () -> Unit,
-    onGuardar: (String, Int, String) -> Unit
+    onGuardar: (String, Int, String, String) -> Unit
 ) {
     var codigo by remember(codigoInicial) { mutableStateOf(codigoInicial) }
     var cantidad by remember { mutableStateOf("") }
@@ -1114,6 +1258,9 @@ fun RegistrarIngresoScreen(
     var mensajeValidacion by remember { mutableStateOf("") }
     var procesando by remember { mutableStateOf(false) }
     var menuAbierto by remember { mutableStateOf(false) }
+    var ubicacion by remember { mutableStateOf("Bodega de almacenamiento") }
+    var menuUbicacion by remember { mutableStateOf(false) }
+    val ubicacionesPermitidas = listOf("Bodega de almacenamiento", "Devoluciones")
     val seleccionado = productos.firstOrNull { it.codigo.equals(codigo, ignoreCase = true) }
     val filtrados = productos.filter {
         it.nombre.contains(codigo, ignoreCase = true) || it.codigo.contains(codigo, ignoreCase = true)
@@ -1153,6 +1300,7 @@ fun RegistrarIngresoScreen(
                             },
                             onClick = {
                                 codigo = producto.codigo
+                                ubicacion = producto.ubicacion
                                 menuAbierto = false
                                 mensajeValidacion = ""
                             }
@@ -1161,11 +1309,51 @@ fun RegistrarIngresoScreen(
                 }
             }
             if (seleccionado != null) {
-                Text("Stock actual: ${seleccionado.cantidad} ${seleccionado.unidad}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                androidx.compose.material3.Card(colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("PRODUCTO", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(seleccionado.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("${seleccionado.codigo} · ${seleccionado.categoria}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Descripción", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(seleccionado.descripcion.ifBlank { "Sin descripción registrada" }, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Almacenamiento", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(seleccionado.ubicacion, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            }
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Stock actual", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${seleccionado.cantidad} ${seleccionado.unidad}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
             } else if (codigo.isNotBlank()) {
                 Text("Selecciona un insumo de la lista para confirmar el código.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            CampoCappucare(cantidad, { cantidad = it.filter(Char::isDigit); mensajeValidacion = "" }, "Cantidad a ingresar", singleLine = true, keyboardType = KeyboardType.Number)
+            Text("Ubicación de destino", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Box {
+                OutlinedButton(onClick = { menuUbicacion = true }, modifier = Modifier.fillMaxWidth()) { Text(ubicacion, modifier = Modifier.weight(1f), textAlign = TextAlign.Start); Text("⌄") }
+                DropdownMenu(expanded = menuUbicacion, onDismissRequest = { menuUbicacion = false }) {
+                    ubicacionesPermitidas.forEach { opcion -> DropdownMenuItem(text = { Text(opcion) }, onClick = { ubicacion = opcion; menuUbicacion = false }) }
+                }
+            }
+            if (ubicacion == "Devoluciones") Text("Este ingreso quedará en devoluciones y no estará disponible para salidas normales hasta su revisión.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            CampoCappucare(cantidad, { cantidad = it.filter(Char::isDigit); mensajeValidacion = "" }, "Cantidad que ingresa", singleLine = true, keyboardType = KeyboardType.Number)
+            if (seleccionado != null) {
+                val cantidadIngreso = cantidad.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                androidx.compose.material3.Card(colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Stock resultante", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${seleccionado.cantidad + cantidadIngreso} ${seleccionado.unidad}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
             CampoCappucare(responsable, {}, "Responsable (usuario activo)", readOnly = true, singleLine = true)
             MensajeFormulario(mensajeValidacion, mensaje)
             Spacer(Modifier.height(4.dp))
@@ -1178,7 +1366,7 @@ fun RegistrarIngresoScreen(
                         numero == null -> mensajeValidacion = "Debe ingresar una cantidad válida."
                         numero <= 0 -> mensajeValidacion = "La cantidad debe ser mayor que 0."
                         responsable.isBlank() -> mensajeValidacion = "No se pudo identificar al responsable."
-                        else -> { mensajeValidacion = ""; procesando = true; onGuardar(seleccionado.codigo, numero, responsable.trim()) }
+                        else -> { mensajeValidacion = ""; procesando = true; onGuardar(seleccionado.codigo, numero, ubicacion, responsable.trim()) }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp)
@@ -1195,7 +1383,7 @@ fun RegistrarSalidaScreen(
     mensaje: String?,
     responsableActivo: String,
     onVolver: () -> Unit,
-    onGuardar: (String, Int, String, String) -> Unit
+    onGuardar: (String, Int, String, String, String) -> Unit
 ) {
     var codigo by remember { mutableStateOf("") }
     var cantidad by remember { mutableStateOf("") }
@@ -1204,6 +1392,9 @@ fun RegistrarSalidaScreen(
     var mensajeValidacion by remember { mutableStateOf("") }
     var procesando by remember { mutableStateOf(false) }
     var menuAbierto by remember { mutableStateOf(false) }
+    var ubicacion by remember { mutableStateOf("Bodega de almacenamiento") }
+    var menuUbicacion by remember { mutableStateOf(false) }
+    val ubicacionesPermitidas = listOf("Bodega de almacenamiento", "Devoluciones")
     val seleccionado = productos.firstOrNull { it.codigo.equals(codigo, ignoreCase = true) }
     val filtrados = productos.filter {
         it.nombre.contains(codigo, ignoreCase = true) || it.codigo.contains(codigo, ignoreCase = true)
@@ -1243,6 +1434,7 @@ fun RegistrarSalidaScreen(
                             },
                             onClick = {
                                 codigo = producto.codigo
+                                ubicacion = producto.ubicacion
                                 menuAbierto = false
                                 mensajeValidacion = ""
                             }
@@ -1251,11 +1443,52 @@ fun RegistrarSalidaScreen(
                 }
             }
             if (seleccionado != null) {
-                Text("Stock disponible: ${seleccionado.cantidad} ${seleccionado.unidad}", color = if (seleccionado.cantidad > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                androidx.compose.material3.Card(colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("PRODUCTO", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(seleccionado.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("${seleccionado.codigo} · ${seleccionado.categoria}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Descripción", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(seleccionado.descripcion.ifBlank { "Sin descripción registrada" }, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Almacenamiento", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(seleccionado.ubicacion, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            }
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Stock disponible", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${seleccionado.cantidad} ${seleccionado.unidad}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = if (seleccionado.cantidad > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
             } else if (codigo.isNotBlank()) {
                 Text("Selecciona un insumo de la lista para confirmar el código.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            CampoCappucare(cantidad, { cantidad = it.filter(Char::isDigit); mensajeValidacion = "" }, "Cantidad a retirar", singleLine = true, keyboardType = KeyboardType.Number)
+            Text("Ubicación desde la que sale", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Box {
+                OutlinedButton(onClick = { menuUbicacion = true }, modifier = Modifier.fillMaxWidth()) { Text(ubicacion, modifier = Modifier.weight(1f), textAlign = TextAlign.Start); Text("⌄") }
+                DropdownMenu(expanded = menuUbicacion, onDismissRequest = { menuUbicacion = false }) {
+                    ubicacionesPermitidas.forEach { opcion -> DropdownMenuItem(text = { Text(opcion) }, onClick = { ubicacion = opcion; menuUbicacion = false; mensajeValidacion = "" }) }
+                }
+            }
+            if (ubicacion == "Devoluciones") Text("No se permiten salidas normales desde devoluciones hasta que el producto sea revisado y vuelva a bodega.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            CampoCappucare(cantidad, { cantidad = it.filter(Char::isDigit); mensajeValidacion = "" }, "Cantidad que sale", singleLine = true, keyboardType = KeyboardType.Number)
+            if (seleccionado != null) {
+                val cantidadSalida = cantidad.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val stockResultante = (seleccionado.cantidad - cantidadSalida).coerceAtLeast(0)
+                androidx.compose.material3.Card(colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Stock resultante", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${stockResultante} ${seleccionado.unidad}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = if (cantidadSalida > seleccionado.cantidad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
             CampoCappucare(motivo, { motivo = it; mensajeValidacion = "" }, "Motivo de la salida", singleLine = true)
             CampoCappucare(responsable, {}, "Responsable (usuario activo)", readOnly = true, singleLine = true)
             MensajeFormulario(mensajeValidacion, mensaje)
@@ -1268,10 +1501,12 @@ fun RegistrarSalidaScreen(
                         seleccionado == null -> mensajeValidacion = "Selecciona un insumo válido de la lista."
                         numero == null -> mensajeValidacion = "Debe ingresar una cantidad válida."
                         numero <= 0 -> mensajeValidacion = "La cantidad debe ser mayor que 0."
+                        ubicacion == "Devoluciones" -> mensajeValidacion = "No se puede registrar una salida normal desde devoluciones."
+                        seleccionado.ubicacion != ubicacion -> mensajeValidacion = "El producto está registrado en ${seleccionado.ubicacion}. Seleccione esa ubicación."
                         numero > seleccionado.cantidad -> mensajeValidacion = "Stock insuficiente. Disponible: ${seleccionado.cantidad}."
                         motivo.isBlank() -> mensajeValidacion = "Debe ingresar el motivo de la salida."
                         responsable.isBlank() -> mensajeValidacion = "No se pudo identificar al responsable."
-                        else -> { mensajeValidacion = ""; procesando = true; onGuardar(seleccionado.codigo, numero, motivo.trim(), responsable.trim()) }
+                        else -> { mensajeValidacion = ""; procesando = true; onGuardar(seleccionado.codigo, numero, motivo.trim(), ubicacion, responsable.trim()) }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp),
