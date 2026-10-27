@@ -3,7 +3,7 @@
 Aplicación Android académica para gestionar el inventario ficticio de
 insumos y medicamentos. Está desarrollada con Kotlin, Jetpack Compose,
 Material 3, arquitectura MVVM y persistencia local mediante Room sobre
-SQLite.
+SQLite
 
 ## Integrantes
 
